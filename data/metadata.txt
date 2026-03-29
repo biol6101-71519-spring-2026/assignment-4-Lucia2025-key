@@ -1,0 +1,8 @@
+Sample name: SRR10230796
+Organism: Dengue virus serotype 2
+Data source: NCBI SRA public dataset
+Sequencing platform: Illumina paired-end
+Read 1 file: data/raw_reads/SRR10230796_1.fastq.gz
+Read 2 file: data/raw_reads/SRR10230796_2.fastq.gz
+Expected genome size: ~11 kb
+Workflow tools used: FastQC, fastp, SPAdes, MultiQC

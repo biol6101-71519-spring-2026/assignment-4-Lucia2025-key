@@ -1,0 +1,183 @@
+configfile: "config/config.yaml"
+
+SAMPLE = "".join(config["sample_name"].split())
+R1 = config["reads_r1"].strip()
+R2 = config["reads_r2"].strip()
+
+THREADS = config["assembly"]["threads"]
+MEMORY_GB = config["assembly"]["memory_gb"]
+BUSCO_LINEAGE = config["busco_lineage"]
+
+rule all:
+    input:
+        f"results/qc/raw/{SAMPLE}_1_fastqc.html",
+        f"results/qc/raw/{SAMPLE}_2_fastqc.html",
+        f"results/processed_reads/{SAMPLE}_R1.trimmed.fastq.gz",
+        f"results/processed_reads/{SAMPLE}_R2.trimmed.fastq.gz",
+        f"results/qc/processed/{SAMPLE}_R1.trimmed_fastqc.html",
+        f"results/qc/processed/{SAMPLE}_R2.trimmed_fastqc.html",
+        "results/assembly/contigs.fasta",
+        "results/qc/assembly/quast/report.html",
+        "results/qc/multiqc/multiqc_report.html"
+        # Add BUSCO later if it works well:
+        # "results/qc/assembly/busco/short_summary.txt"
+
+rule fastqc_raw:
+    input:
+        r1=R1,
+        r2=R2
+    output:
+        html1=f"results/qc/raw/{SAMPLE}_1_fastqc.html",
+        zip1=f"results/qc/raw/{SAMPLE}_1_fastqc.zip",
+        html2=f"results/qc/raw/{SAMPLE}_2_fastqc.html",
+        zip2=f"results/qc/raw/{SAMPLE}_2_fastqc.zip"
+    params:
+        outdir="results/qc/raw"
+    threads: 2
+    log:
+        f"logs/fastqc_raw_{SAMPLE}.log"
+    conda:
+        "envs/fastqc.yaml"
+    shell:
+        """
+        mkdir -p "{params.outdir}" logs
+        fastqc "{input.r1}" "{input.r2}" -o "{params.outdir}" -t {threads} &> "{log}"
+        """
+
+rule fastp:
+    input:
+        r1=R1,
+        r2=R2
+    output:
+        r1=f"results/processed_reads/{SAMPLE}_R1.trimmed.fastq.gz",
+        r2=f"results/processed_reads/{SAMPLE}_R2.trimmed.fastq.gz",
+        html=f"results/processed_reads/{SAMPLE}_fastp.html",
+        json=f"results/processed_reads/{SAMPLE}_fastp.json"
+    threads: 4
+    log:
+        f"logs/fastp_{SAMPLE}.log"
+    params:
+        q=config["fastp"]["qualified_quality_phred"],
+        l=config["fastp"]["length_required"]
+    conda:
+        "envs/fastp.yaml"
+    shell:
+        """
+        mkdir -p "results/processed_reads" logs
+        fastp \
+            -i "{input.r1}" \
+            -I "{input.r2}" \
+            -o "{output.r1}" \
+            -O "{output.r2}" \
+            -q {params.q} \
+            -l {params.l} \
+            -h "{output.html}" \
+            -j "{output.json}" \
+            -w {threads} &> "{log}"
+        """
+
+rule fastqc_trimmed:
+    input:
+        r1=f"results/processed_reads/{SAMPLE}_R1.trimmed.fastq.gz",
+        r2=f"results/processed_reads/{SAMPLE}_R2.trimmed.fastq.gz"
+    output:
+        html1=f"results/qc/processed/{SAMPLE}_R1.trimmed_fastqc.html",
+        zip1=f"results/qc/processed/{SAMPLE}_R1.trimmed_fastqc.zip",
+        html2=f"results/qc/processed/{SAMPLE}_R2.trimmed_fastqc.html",
+        zip2=f"results/qc/processed/{SAMPLE}_R2.trimmed_fastqc.zip"
+    params:
+        outdir="results/qc/processed"
+    threads: 2
+    log:
+        f"logs/fastqc_trimmed_{SAMPLE}.log"
+    conda:
+        "envs/fastqc.yaml"
+    shell:
+        """
+        mkdir -p "{params.outdir}" logs
+        fastqc "{input.r1}" "{input.r2}" -o "{params.outdir}" -t {threads} &> "{log}"
+        """
+
+rule spades:
+    input:
+        r1=f"results/processed_reads/{SAMPLE}_R1.trimmed.fastq.gz",
+        r2=f"results/processed_reads/{SAMPLE}_R2.trimmed.fastq.gz"
+    output:
+        "results/assembly/contigs.fasta"
+    threads: THREADS
+    params:
+        mem=MEMORY_GB
+    log:
+        f"logs/spades_{SAMPLE}.log"
+    conda:
+        "envs/spades.yaml"
+    shell:
+        """
+        mkdir -p "results/assembly" logs
+        spades.py \
+            -1 "{input.r1}" \
+            -2 "{input.r2}" \
+            -o "results/assembly" \
+            --careful \
+            -t {threads} \
+            -m {params.mem} &> "{log}"
+        """
+
+rule quast:
+    input:
+        "results/assembly/contigs.fasta"
+    output:
+        "results/qc/assembly/quast/report.html"
+    params:
+        outdir="results/qc/assembly/quast"
+    threads: 2
+    log:
+        f"logs/quast_{SAMPLE}.log"
+    container:
+        "docker://quay.io/biocontainers/quast:5.2.0--py310pl5321h6cc9453_3"
+    shell:
+        """
+        mkdir -p "{params.outdir}" logs
+        quast.py "{input}" -o "{params.outdir}" &> "{log}"
+        """
+
+rule multiqc:
+    input:
+        f"results/qc/raw/{SAMPLE}_1_fastqc.zip",
+        f"results/qc/raw/{SAMPLE}_2_fastqc.zip",
+        f"results/qc/processed/{SAMPLE}_R1.trimmed_fastqc.zip",
+        f"results/qc/processed/{SAMPLE}_R2.trimmed_fastqc.zip",
+        f"results/processed_reads/{SAMPLE}_fastp.json",
+        "results/qc/assembly/quast/report.html"
+    output:
+        "results/qc/multiqc/multiqc_report.html"
+    params:
+        outdir="results/qc/multiqc"
+    log:
+        "logs/multiqc.log"
+    conda:
+        "envs/multiqc.yaml"
+    shell:
+        """
+        mkdir -p "{params.outdir}" logs
+        multiqc results -o "{params.outdir}" &> "{log}"
+        """
+
+# Optional for later
+# rule busco:
+#     input:
+#         "results/assembly/contigs.fasta"
+#     output:
+#         "results/qc/assembly/busco/short_summary.txt"
+#     params:
+#         outdir="results/qc/assembly/busco"
+#     threads: 2
+#     log:
+#         f"logs/busco_{SAMPLE}.log"
+#     conda:
+#         "envs/busco.yaml"
+#     shell:
+#         """
+#         mkdir -p "{params.outdir}" logs
+#         busco -i "{input}" -o busco -m genome -l {BUSCO_LINEAGE} --out_path "results/qc/assembly" -c {threads} &> "{log}"
+#         """

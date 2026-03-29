@@ -1,0 +1,17 @@
+sample_name: "SRR10230796"
+
+reads_r1: "data/raw_reads/SRR10230796_1.fastq.gz"
+reads_r2: "data/raw_reads/SRR10230796_2.fastq.gz"
+
+organism: "Dengue virus serotype 2"
+expected_genome_size: "0.011m"
+
+busco_lineage: "virus_odb10"
+
+assembly:
+  threads: 8
+  memory_gb: 16
+
+fastp:
+  qualified_quality_phred: 20
+  length_required: 50

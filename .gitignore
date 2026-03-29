@@ -1,0 +1,14 @@
+.snakemake/
+logs/
+results/
+data/raw_reads/
+
+*.fastq
+*.fastq.gz
+*.bam
+*.sam
+*.fasta
+*.fa
+*.gz
+*.zip
+*.html
