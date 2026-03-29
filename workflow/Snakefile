@@ -16,11 +16,11 @@ rule all:
         f"results/processed_reads/{SAMPLE}_R2.trimmed.fastq.gz",
         f"results/qc/processed/{SAMPLE}_R1.trimmed_fastqc.html",
         f"results/qc/processed/{SAMPLE}_R2.trimmed_fastqc.html",
-        "results/assembly/contigs.fasta",
+        "results/assembly/scaffolds.fasta",
         "results/qc/assembly/quast/report.html",
-        "results/qc/multiqc/multiqc_report.html"
-        # Add BUSCO later if it works well:
-        # "results/qc/assembly/busco/short_summary.txt"
+        "results/qc/multiqc/multiqc_report.html",
+        "results/qc/assembly/busco"
+        
 
 rule fastqc_raw:
     input:
@@ -103,7 +103,7 @@ rule spades:
         r1=f"results/processed_reads/{SAMPLE}_R1.trimmed.fastq.gz",
         r2=f"results/processed_reads/{SAMPLE}_R2.trimmed.fastq.gz"
     output:
-        "results/assembly/contigs.fasta"
+        "results/assembly/scaffolds.fasta",
     threads: THREADS
     params:
         mem=MEMORY_GB
@@ -125,9 +125,9 @@ rule spades:
 
 rule quast:
     input:
-        "results/assembly/contigs.fasta"
+        "results/assembly/scaffolds.fasta",
     output:
-        "results/qc/assembly/quast/report.html"
+        "results/qc/assembly/quast/report.html",
     params:
         outdir="results/qc/assembly/quast"
     threads: 2
@@ -138,7 +138,7 @@ rule quast:
     shell:
         """
         mkdir -p "{params.outdir}" logs
-        quast.py "{input}" -o "{params.outdir}" &> "{log}"
+        quast.py "{input}" -o "{params.outdir}" --threads {threads} &> "{log}"
         """
 
 rule multiqc:
@@ -148,36 +148,45 @@ rule multiqc:
         f"results/qc/processed/{SAMPLE}_R1.trimmed_fastqc.zip",
         f"results/qc/processed/{SAMPLE}_R2.trimmed_fastqc.zip",
         f"results/processed_reads/{SAMPLE}_fastp.json",
-        "results/qc/assembly/quast/report.html"
+        "results/qc/assembly/quast/report.html",
+         # Add BUSCO later
+         # "results/qc/assembly/busco/short_summary.txt"    
     output:
-        "results/qc/multiqc/multiqc_report.html"
+        "results/qc/multiqc/multiqc_report.html",
     params:
-        outdir="results/qc/multiqc"
+        outdir="results/qc/multiqc",
     log:
         "logs/multiqc.log"
-    conda:
-        "envs/multiqc.yaml"
+    container:
+        "docker://quay.io/biocontainers/multiqc:1.14--pyhdfd78af_0"
     shell:
         """
         mkdir -p "{params.outdir}" logs
         multiqc results -o "{params.outdir}" &> "{log}"
         """
 
-# Optional for later
-# rule busco:
-#     input:
-#         "results/assembly/contigs.fasta"
-#     output:
-#         "results/qc/assembly/busco/short_summary.txt"
-#     params:
-#         outdir="results/qc/assembly/busco"
-#     threads: 2
-#     log:
-#         f"logs/busco_{SAMPLE}.log"
-#     conda:
-#         "envs/busco.yaml"
-#     shell:
-#         """
-#         mkdir -p "{params.outdir}" logs
-#         busco -i "{input}" -o busco -m genome -l {BUSCO_LINEAGE} --out_path "results/qc/assembly" -c {threads} &> "{log}"
-#         """
+
+rule busco:
+    input:
+        "results/assembly/scaffolds.fasta"
+    output:
+        directory("results/qc/assembly/busco")
+    params:
+        lineage=BUSCO_LINEAGE
+    threads: 2
+    log:
+        f"logs/busco_{SAMPLE}.log"
+    container:
+        "docker://quay.io/biocontainers/busco:5.4.7--pyhdfd78af_0"
+    shell:
+        """
+        mkdir -p logs
+        busco \
+            -i {input} \
+            -l {params.lineage} \
+            -o busco \
+            -m genome \
+            --out_path results/qc/assembly \
+            --cpu {threads} \
+            &> {log}
+        """

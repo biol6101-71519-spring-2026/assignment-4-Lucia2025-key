@@ -6,3 +6,4 @@ Read 1 file: data/raw_reads/SRR10230796_1.fastq.gz
 Read 2 file: data/raw_reads/SRR10230796_2.fastq.gz
 Expected genome size: ~11 kb
 Workflow tools used: FastQC, fastp, SPAdes, MultiQC
+Final assembly: results/assembly/scaffolds.fasta
